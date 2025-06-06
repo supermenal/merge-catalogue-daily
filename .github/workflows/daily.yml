@@ -1,27 +1,40 @@
 name: Merge Catalogues Daily
 
-# 1) Allow manual triggering via the “Run workflow” button
-# 2) Also run every day at 03:00 UTC
+# 1) Enable manual triggering via “Run workflow”
+# 2) Run every day at 03:00 UTC
 on:
-  workflow_dispatch:    # ← Add this line so you get a “Run workflow” button
+  workflow_dispatch:
   schedule:
     - cron: '0 3 * * *'
+
+# Grant the GITHUB_TOKEN permission to push commits (write repo contents)
+permissions:
+  contents: write
 
 jobs:
   build-and-merge:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      # STEP 1: Check out the code, preserving GITHUB_TOKEN for push
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          # persist-credentials: true makes sure GITHUB_TOKEN is
+          # written into .git/config so that `git push` will work
+          persist-credentials: true
 
+      # STEP 2: Set up Python 3.x
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.x'
 
+      # STEP 3: Install requests
       - name: Install dependencies
         run: python -m pip install --upgrade pip requests
 
+      # STEP 4: Run the merge script, producing combined.csv
       - name: Run merge_catalogues.py
         run: |
           UK_URL="https://www.superprof.co.uk/catalogue_facebook.csv"
@@ -29,15 +42,21 @@ jobs:
           OUT="combined.csv"
           python merge_catalogues.py "$UK_URL" "$FR_URL" "$OUT"
 
+      # STEP 5: Commit combined.csv (if it changed)
       - name: Commit merged CSV
         run: |
+          # Configure Git so the commit is attributed to GitHub Actions
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add combined.csv
-          git commit -m "Daily merge: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
 
-      - name: Push changes
-        uses: ad-m/github-push-action@v0.6.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: main
+          # Only commit if combined.csv has changes
+          if [ -n "$(git status --porcelain combined.csv)" ]; then
+            git add combined.csv
+            git commit -m "Daily merge: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          else
+            echo "No changes in combined.csv; skipping commit."
+          fi
+
+      # STEP 6: Push back to main (GITHUB_TOKEN already persisted)
+      - name: Push changes to main
+        run: git push origin main
