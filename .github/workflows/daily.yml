@@ -1,7 +1,9 @@
 name: Merge Catalogues Daily
 
-# Run every day at 03:00 UTC
+# 1) Allow manual triggering via the “Run workflow” button
+# 2) Also run every day at 03:00 UTC
 on:
+  workflow_dispatch:    # ← Add this line so you get a “Run workflow” button
   schedule:
     - cron: '0 3 * * *'
 
@@ -10,20 +12,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Check out this repo’s code
       - uses: actions/checkout@v4
 
-      # 2) Set up Python 3.x
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.x'
 
-      # 3) Install dependencies (requests)
       - name: Install dependencies
         run: python -m pip install --upgrade pip requests
 
-      # 4) Run the merge script, producing combined.csv
       - name: Run merge_catalogues.py
         run: |
           UK_URL="https://www.superprof.co.uk/catalogue_facebook.csv"
@@ -31,16 +29,15 @@ jobs:
           OUT="combined.csv"
           python merge_catalogues.py "$UK_URL" "$FR_URL" "$OUT"
 
-      # 5) Commit and push the new combined.csv back to this repo
       - name: Commit merged CSV
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add combined.csv
           git commit -m "Daily merge: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
+
       - name: Push changes
         uses: ad-m/github-push-action@v0.6.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: main
-
